@@ -1,5 +1,7 @@
 -- Runs before migrations on every bootstrap: keep it idempotent.
 -- PostgREST logs in as `authenticator` and switches to `web_anon` per request.
+-- Demo roles: web_anon can read everything granted below with no JWT, which is
+-- only acceptable because PostgREST listens on an owner-only unix socket.
 DO $$
 BEGIN
   IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'authenticator') THEN

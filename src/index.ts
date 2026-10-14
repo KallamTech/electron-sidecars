@@ -16,7 +16,7 @@ export {
   type PostgrestOptions,
   type PostgrestEndpoint,
 } from './postgrest.js';
-export { startRedis, type RedisOptions, type RedisEndpoint, type RedisFlavor } from './redis.js';
+export { startRedis, redisAccepts, type RedisOptions, type RedisEndpoint, type RedisFlavor } from './redis.js';
 export {
   startOllama,
   ensureModel,

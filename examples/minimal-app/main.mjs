@@ -1,10 +1,12 @@
 // Boots Postgres+pgvector, PostgREST and Redis, then shows their status.
 // Binaries: `npm run bin` (→ ./pg, ./bin). Packaged: ship pg/, bin/, db/ as extraResources.
+import { randomBytes } from 'node:crypto';
+import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { app, BrowserWindow } from 'electron';
 import { startPostgres, startPostgrest, startRedis } from '@kallamtech/electron-sidecars';
-import { dataPath, resourcePath, stopOnQuit } from '@kallamtech/electron-sidecars/electron';
+import { dataPath, persistentSecret, resourcePath, stopOnQuit } from '@kallamtech/electron-sidecars/electron';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const res = (...p) => resourcePath(here, ...p);
@@ -15,6 +17,18 @@ stopOnQuit(async () => {
   redis?.stop();
   await pg?.stop();
 });
+
+function getJson(socketPath, p) {
+  return new Promise((resolve, reject) => {
+    http
+      .get({ socketPath, path: p }, (res) => {
+        let body = '';
+        res.on('data', (d) => (body += d));
+        res.on('end', () => resolve(JSON.parse(body)));
+      })
+      .on('error', reject);
+  });
+}
 
 function page(body) {
   return `data:text/html;charset=utf-8,${encodeURIComponent(
@@ -31,6 +45,7 @@ app.whenReady().then(async () => {
       binDir: res('pg', 'bin'),
       dataDir: dataPath('pgdata'),
       database: 'app',
+      password: persistentSecret('postgres'),
       schema: {
         prelude: [res('db', 'prelude.sql')],
         migrationsDir: res('db', 'migrations'),
@@ -38,24 +53,36 @@ app.whenReady().then(async () => {
         searchPath: 'public, extensions',
       },
     });
+    // PostgREST's login role gets a fresh password every launch.
+    const authenticatorPw = randomBytes(24).toString('hex');
+    await pg.setPassword('authenticator', authenticatorPw);
     [rest, redis] = await Promise.all([
+      // Demo only: anonymous access is acceptable because the socket is
+      // reachable by this OS user alone. A real app puts its own
+      // authenticating proxy (or a jwtSecret) in front of this.
       startPostgrest({
         bin: res('bin', 'postgrest'),
-        dbUri: pg.url('authenticator'),
+        dbUri: pg.url('authenticator', authenticatorPw),
         anonRole: 'web_anon',
+        allowAnonymous: true,
+        unixSocket: path.join(app.getPath('temp'), 'sidecars-demo', 'postgrest.sock'),
         extraSearchPath: ['public', 'extensions'],
         schemaChanged: pg.schemaChanged,
       }),
-      startRedis({ bin: res('bin', 'redis-server'), dataDir: dataPath('redis') }),
+      startRedis({
+        bin: res('bin', 'redis-server'),
+        dataDir: dataPath('redis'),
+        password: randomBytes(24).toString('hex'),
+      }),
     ]);
-    const notes = await (await fetch(`${rest.url}/notes?select=id,body,embedding`)).json();
+    const notes = await getJson(rest.socketPath, '/notes?select=id,body,embedding');
     const esc = (s) => String(s).replace(/[&<>]/g, (c) => `&#${c.charCodeAt(0)};`);
     await win.loadURL(
       page(`<h1>All sidecars up</h1>
         <ul>
-          <li>Postgres: <code>${esc(pg.url())}</code>${pg.initialized ? ' (new cluster)' : ''}</li>
-          <li>PostgREST: <code>${esc(rest.url)}</code></li>
-          <li>Redis: <code>${esc(redis.url)}</code></li>
+          <li>Postgres: <code>127.0.0.1:${pg.port}</code> (scram-sha-256)${pg.initialized ? ' (new cluster)' : ''}</li>
+          <li>PostgREST: <code>${esc(rest.socketPath)}</code> (unix socket)</li>
+          <li>Redis: <code>127.0.0.1:${redis.port}</code> (password)</li>
         </ul>
         <h2>GET /notes</h2><pre>${esc(JSON.stringify(notes, null, 2))}</pre>`),
     );

@@ -10,9 +10,11 @@ permissions:
 jobs:
   publish:
     runs-on: macos-14
+    # Required reviewers on this environment gate every release.
+    environment: npm
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
           registry-url: https://registry.npmjs.org
@@ -22,6 +24,7 @@ jobs:
       - run: npm run typecheck && npm run lint && npm test
       - name: tag matches package version
         run: test "v$(node -p 'require("./package.json").version')" = "$GITHUB_REF_NAME"
-      # Trusted publishing (configure this repo + workflow on npmjs.com): no token stored.
-      - run: npm install -g npm@latest
+      # Trusted publishing (configure this repo + workflow + the `npm` environment
+      # on npmjs.com): no token stored. Needs npm >= 11.5.1.
+      - run: npm install -g npm@11.21.0
       - run: npm publish --provenance --access public

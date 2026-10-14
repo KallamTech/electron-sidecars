@@ -42,15 +42,18 @@ doesn't import it, so the sidecars also work from plain Node.
 ## Use
 
 ```ts
+import crypto from 'node:crypto';
 import { startPostgres, startPostgrest, startRedis } from '@kallamtech/electron-sidecars';
-import { dataPath, resourcePath, stopOnQuit } from '@kallamtech/electron-sidecars/electron';
+import { dataPath, persistentSecret, resourcePath, stopOnQuit } from '@kallamtech/electron-sidecars/electron';
 
 const res = (...p: string[]) => resourcePath(__dirname, ...p); // Resources/ when packaged
+const fresh = () => crypto.randomBytes(24).toString('hex');
 
 const pg = await startPostgres({
   binDir: res('pg', 'bin'),
   dataDir: dataPath('pgdata'),
   database: 'app',
+  password: persistentSecret('postgres'), // scram-sha-256; kept in safeStorage
   settings: { wal_level: 'logical' },   // optional GUCs
   schema: {
     prelude: [res('db', 'prelude.sql')],  // roles, schemas, extensions — idempotent
@@ -59,14 +62,21 @@ const pg = await startPostgres({
     searchPath: 'public, extensions',
   },
 });
+const authenticatorPw = fresh();
+await pg.setPassword('authenticator', authenticatorPw);
 const rest = await startPostgrest({
   bin: res('bin', 'postgrest'),
-  dbUri: pg.url('authenticator'),
+  dbUri: pg.url('authenticator', authenticatorPw),
   anonRole: 'web_anon',
+  jwtSecret: fresh(),                     // or: allowAnonymous + unixSocket behind your own proxy
   extraSearchPath: ['public', 'extensions'],
   schemaChanged: pg.schemaChanged,
 });
-const redis = await startRedis({ bin: res('bin', 'redis-server'), dataDir: dataPath('redis') });
+const redis = await startRedis({
+  bin: res('bin', 'redis-server'),
+  dataDir: dataPath('redis'),
+  password: fresh(),                      // a new one per launch is fine
+});
 
 stopOnQuit(async () => {
   rest.stop();
@@ -93,6 +103,29 @@ await whisper.ready;
 // POST audio to `${whisper.url}/inference`
 ```
 
+## Security
+
+Loopback is not a security boundary. Anything on the machine can connect to
+`127.0.0.1` — other apps, other OS users, and web pages in the user's browser
+(directly, or through DNS rebinding). The defaults assume that:
+
+| Service | Default | Opt-out |
+|---|---|---|
+| Postgres | scram-sha-256 on every connection; unix socket mode 0700. `password` is required. An existing trust-auth cluster is converted on first start, and a lost password is reset in single-user mode. | `trust: true` (tests, throwaway data) |
+| PostgREST | `jwtSecret` is required. `unixSocket` serves on an owner-only socket (mode 600, parent dir 0700) instead of TCP, so no browser can reach it. `corsAllowedOrigins` pins CORS on a TCP listener, which otherwise reflects any Origin. | `allowAnonymous: true` — only with `unixSocket` behind your own authenticating proxy |
+| Redis | `password` sets `requirepass`, passed over stdin rather than argv (`ps` shows argv). Garnet only accepts argv. An instance that rejects the password is replaced, not adopted. | omit `password` |
+| whisper | every route sits behind a random per-launch path prefix | — |
+| Ollama | loopback; Ollama's default origin allowlist blocks web pages | — |
+
+Keep long-lived secrets out of plaintext: `persistentSecret(name)` (from
+`/electron`) stores a random secret under userData, encrypted with
+`safeStorage`. Passwords that only need to live for one launch (PostgREST's
+login role, Redis) can simply be regenerated every launch.
+
+If you run anonymous PostgREST behind a proxy, that proxy is now the
+boundary. Check the `Host` header against an allowlist (DNS rebinding), lock
+CORS, and require a token on mutating routes.
+
 ### Migrating from a hosted database
 
 The prelude is where a bare Postgres is made to look like what your
@@ -110,9 +143,9 @@ Migrations are applied in-process as one multi-statement query per file, so
 
 | Function | Returns |
 |---|---|
-| `startPostgres(opts)` | `{ port, dataDir, database, url(role?), schemaChanged, initialized, stop() }` |
-| `startPostgrest(opts)` | `{ url, port, child, adoptedPid, stop() }` |
-| `startRedis(opts)` | `{ host, port, url, child, adoptedPid, stop() }` |
+| `startPostgres(opts)` | `{ port, dataDir, database, url(role?, password?), setPassword(role, pw), schemaChanged, initialized, stop() }` |
+| `startPostgrest(opts)` | `{ url, port, socketPath, child, adoptedPid, stop() }` |
+| `startRedis(opts)` | `{ host, port, password, url, child, adoptedPid, stop() }` |
 | `startOllama(opts)` | `{ url, ownedByUs, child, stop() }` |
 | `ensureModel(url, model, onProgress?, label?)` | pulls an Ollama model if missing |
 | `startWhisper(opts)` | `{ url, ready, stop() }` |
@@ -120,10 +153,11 @@ Migrations are applied in-process as one multi-statement query per file, so
 | `applySchema`, `ensureDatabase`, `schemaFingerprint` | the migration runner, standalone |
 | `stageBundle(src, dest, version)` | copy a read-only bundled dir somewhere writable, once per version |
 | `isPortOpen`, `waitForPort`, `findFreePort`, `findListenerPid`, `withoutEnv` | helpers |
-| `electron`: `resourcePath`, `dataPath`, `stopOnQuit` | Electron-only helpers |
+| `redisAccepts(port, password?)` | whether a Redis on `port` accepts the credentials |
+| `electron`: `resourcePath`, `dataPath`, `stopOnQuit`, `persistentSecret` | Electron-only helpers |
 
-Every option is documented on its TypeScript type. All services bind
-`127.0.0.1` only. Every `start*` takes a `log` callback (default: console).
+Every option is documented on its TypeScript type. All TCP listeners bind
+`127.0.0.1` only (see [Security](#security) for why that alone isn't enough). Every `start*` takes a `log` callback (default: console).
 
 ## Bundling the binaries
 

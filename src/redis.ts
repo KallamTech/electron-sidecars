@@ -1,6 +1,7 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
+import net from 'node:net';
 import path from 'node:path';
 import { consoleLogger, pipeOutput, type Logger } from './log.js';
 import { findListenerPid, isPortOpen, killPid, LOOPBACK, waitForPort } from './net.js';
@@ -17,7 +18,13 @@ export interface RedisOptions {
   port?: number;
   /** Default: `garnet` when the binary name contains "garnet", else `redis`. */
   flavor?: RedisFlavor;
-  /** Reuse whatever already listens on the port. Default true. */
+  /** requirepass. Strongly recommended: without it any local process can read
+   *  and write your queues. A fresh random value per launch is fine — an
+   *  instance left over from an earlier launch is then replaced. Passed over
+   *  stdin for Redis (never argv, which `ps` shows); Garnet only takes argv. */
+  password?: string;
+  /** Reuse an instance already on the port — only if it accepts `password`
+   *  (or, without a password, answers PING). Default true. */
   reuseExisting?: boolean;
   log?: Logger;
 }
@@ -25,6 +32,8 @@ export interface RedisOptions {
 export interface RedisEndpoint {
   host: string;
   port: number;
+  password: string | null;
+  /** `redis://[:password@]127.0.0.1:port` */
   url: string;
   child: ChildProcess | null;
   adoptedPid: number | null;
@@ -37,7 +46,8 @@ export function detectFlavor(bin: string): RedisFlavor {
 
 // Same intent for both: loopback on our port, append-only log so queued jobs
 // survive a crash, no RDB snapshots. Garnet spells the flags differently.
-export function redisServerArgs(flavor: RedisFlavor, port: number, dataDir: string): string[] {
+// With a password, Redis reads `requirepass` from stdin (the leading `-`).
+export function redisServerArgs(flavor: RedisFlavor, port: number, dataDir: string, password?: string): string[] {
   if (flavor === 'garnet') {
     return [
       '--port', String(port),
@@ -46,9 +56,11 @@ export function redisServerArgs(flavor: RedisFlavor, port: number, dataDir: stri
       '--checkpointdir', dataDir,
       '--aof',
       '--recover',
+      ...(password ? ['--auth', 'Password', '--password', password] : []),
     ];
   }
   return [
+    ...(password ? ['-'] : []),
     '--port', String(port),
     '--bind', LOOPBACK,
     '--dir', dataDir,
@@ -57,13 +69,52 @@ export function redisServerArgs(flavor: RedisFlavor, port: number, dataDir: stri
   ];
 }
 
+export function redisConfig(password: string): string {
+  if (/[\s"'\\]/.test(password)) throw new Error('redis password must not contain whitespace, quotes or backslashes');
+  return `requirepass ${password}\n`;
+}
+
+function resp(...args: string[]): string {
+  return `*${args.length}\r\n${args.map((a) => `$${Buffer.byteLength(a)}\r\n${a}\r\n`).join('')}`;
+}
+
+/** True when the instance on `port` accepts `password` (or PING without one). */
+export function redisAccepts(port: number, password?: string, timeoutMs = 1500): Promise<boolean> {
+  return new Promise((resolve) => {
+    const s = net.connect(port, LOOPBACK);
+    let buf = '';
+    const done = (ok: boolean) => {
+      s.destroy();
+      resolve(ok);
+    };
+    const t = setTimeout(() => done(false), timeoutMs);
+    s.once('connect', () => s.write((password ? resp('AUTH', password) : '') + resp('PING')));
+    s.on('data', (d) => {
+      buf += d.toString();
+      if (buf.includes('PONG') || buf.startsWith('-')) {
+        clearTimeout(t);
+        done(!buf.startsWith('-') && buf.includes('PONG'));
+      }
+    });
+    s.once('error', () => {
+      clearTimeout(t);
+      done(false);
+    });
+  });
+}
+
 export async function startRedis(opts: RedisOptions): Promise<RedisEndpoint> {
   const port = opts.port ?? 6399;
   const log = opts.log ?? consoleLogger;
-  const url = `redis://${LOOPBACK}:${port}`;
+  const password = opts.password ?? null;
+  if (password) redisConfig(password);
+  const url = password
+    ? `redis://:${encodeURIComponent(password)}@${LOOPBACK}:${port}`
+    : `redis://${LOOPBACK}:${port}`;
   const endpoint = (child: ChildProcess | null, adoptedPid: number | null): RedisEndpoint => ({
     host: LOOPBACK,
     port,
+    password,
     url,
     child,
     adoptedPid,
@@ -75,18 +126,29 @@ export async function startRedis(opts: RedisOptions): Promise<RedisEndpoint> {
 
   if (await isPortOpen(port)) {
     if (opts.reuseExisting === false) throw new Error(`Port ${port} is already in use.`);
-    const adoptedPid = await findListenerPid(port);
-    log('info', 'redis', `reusing instance already on ${port} (pid=${adoptedPid ?? '?'})`);
-    return endpoint(null, adoptedPid);
+    const pid = await findListenerPid(port);
+    if (await redisAccepts(port, password ?? undefined)) {
+      log('info', 'redis', `reusing instance already on ${port} (pid=${pid ?? '?'})`);
+      return endpoint(null, pid);
+    }
+    // Typically our own instance from an earlier launch, with another password.
+    if (!pid) throw new Error(`Port ${port} is held by a process that rejects our credentials.`);
+    log('warn', 'redis', `replacing instance on ${port} that rejects our credentials (pid=${pid})`);
+    killPid(pid);
+    for (let i = 0; i < 25 && (await isPortOpen(port)); i += 1) {
+      await new Promise((r) => setTimeout(r, 200));
+    }
   }
 
   if (!existsSync(opts.bin)) throw new Error(`Redis server not found at ${opts.bin}.`);
   await mkdir(opts.dataDir, { recursive: true });
 
   const flavor = opts.flavor ?? detectFlavor(opts.bin);
-  const child = spawn(opts.bin, redisServerArgs(flavor, port, opts.dataDir), {
-    stdio: ['ignore', 'pipe', 'pipe'],
+  const viaStdin = Boolean(password) && flavor === 'redis';
+  const child = spawn(opts.bin, redisServerArgs(flavor, port, opts.dataDir, password ?? undefined), {
+    stdio: [viaStdin ? 'pipe' : 'ignore', 'pipe', 'pipe'],
   });
+  if (viaStdin) child.stdin?.end(redisConfig(password!));
   pipeOutput(child, 'redis');
   child.on('exit', (code) => log('error', 'redis', `exited with code ${code}`));
 
