@@ -1,0 +1,16 @@
+{
+  "name": "electron-sidecars-minimal-app",
+  "private": true,
+  "type": "module",
+  "main": "main.mjs",
+  "scripts": {
+    "bin": "bash ../../scripts/build-pg-bundle.sh pg && bash ../../scripts/build-bin.sh bin postgrest redis",
+    "start": "electron ."
+  },
+  "dependencies": {
+    "@kallamtech/electron-sidecars": "file:../.."
+  },
+  "devDependencies": {
+    "electron": "^37.0.0"
+  }
+}

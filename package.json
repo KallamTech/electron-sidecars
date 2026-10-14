@@ -1,0 +1,72 @@
+{
+  "name": "@kallamtech/electron-sidecars",
+  "version": "0.1.0",
+  "description": "Run Postgres+pgvector, PostgREST, Redis, Ollama and whisper.cpp as native sidecars inside an Electron (or Node) app — no Docker.",
+  "license": "Apache-2.0",
+  "author": "Kallam",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/KallamTech/electron-sidecars.git"
+  },
+  "keywords": [
+    "electron",
+    "postgres",
+    "pgvector",
+    "postgrest",
+    "redis",
+    "ollama",
+    "whisper",
+    "sidecar",
+    "local-first",
+    "offline"
+  ],
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./electron": {
+      "types": "./dist/electron.d.ts",
+      "import": "./dist/electron.js"
+    }
+  },
+  "files": [
+    "dist",
+    "scripts/*.sh",
+    "README.md",
+    "LICENSE",
+    "NOTICE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "node --test --import tsx test/*.test.ts",
+    "prepare": "npm run build"
+  },
+  "dependencies": {
+    "pg": "^8.13.0"
+  },
+  "peerDependencies": {
+    "electron": ">=30"
+  },
+  "peerDependenciesMeta": {
+    "electron": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.0.0",
+    "@types/node": "^22.0.0",
+    "@types/pg": "^8.11.0",
+    "electron": "^37.0.0",
+    "eslint": "^9.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.5.0",
+    "typescript-eslint": "^8.0.0"
+  }
+}
