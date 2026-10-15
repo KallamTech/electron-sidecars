@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.0
+
+- New `supervise()`: restarts a long-running child (worker, queue listener) with backoff when it exits unexpectedly; `stop()` ends it for good.
+- README: Ollama memory note. Loads that need the scheduler to evict can deadlock (ollama#17408); how to avoid it.
+
 ## 0.2.0
 
 Secure by default. Breaking: every service now needs an explicit auth choice.
