@@ -3,7 +3,7 @@
 ## 0.3.0
 
 - New `supervise()`: restarts a long-running child (worker, queue listener) with backoff when it exits unexpectedly; `stop()` ends it for good.
-- README: Ollama memory note. A model on the MLX runner is never evicted (Ollama 0.40), so a load that doesn't fit beside it hangs; how to avoid it.
+- README: Ollama memory note. Loads that need the scheduler to evict can deadlock (ollama#17408); how to avoid it.
 
 ## 0.2.0
 

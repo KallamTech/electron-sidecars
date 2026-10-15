@@ -106,14 +106,19 @@ await whisper.ready;
 ```
 
 `keepAlive` defaults to `-1`: models stay loaded until Ollama is stopped,
-which keeps the first token fast. Watch memory if you mix models. As of
-Ollama 0.40, a model on the **MLX runner** (`*-mlx` tags on Apple Silicon)
-is never evicted to make room: a request for another model that doesn't fit
-waits forever, and every later load queues behind it. If you pin an MLX
-model, keep the others small enough to fit beside it (an embedding model can
-run on CPU with `options: { num_gpu: 0 }`), or unload it yourself with
-`keep_alive: 0` before loading something large. Also put a timeout on every
-request, so a stuck load fails instead of hanging.
+which keeps the first token fast. Watch memory if you mix models. When a
+model doesn't fit beside the resident ones, Ollama's scheduler evicts to make
+room, and that path can deadlock: the load waits forever and every later
+cold load queues behind it
+([ollama#17408](https://github.com/ollama/ollama/issues/17408); we hit it on
+0.40.3 with a pinned `*-mlx` model and a CPU-only embedding model). Until it
+is fixed:
+
+- unload what you need gone yourself (`keep_alive: 0`) before loading a
+  model that won't fit, so the scheduler never has to evict;
+- keep small models where they can't collide (an embedding model can run on
+  CPU with `options: { num_gpu: 0 }`);
+- put a timeout on every request, so a stuck load fails instead of hanging.
 
 ### Restarting workers
 
