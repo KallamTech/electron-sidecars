@@ -20,6 +20,8 @@ loopback by a small TypeScript function that handles the unglamorous parts:
   (whisper-server sends `Access-Control-Allow-Origin: *`), supervised
   restarts with backoff, stale-process reaping, resumable sha256-pinned
   model download.
+- **`supervise()`**: restarts any other long-running child (workers, queue
+  listeners) with backoff when it exits unexpectedly.
 
 Extracted from the [Kallam](https://kallam.ai) desktop app, where it runs the
 on-device mode. By Kallam.
@@ -103,6 +105,35 @@ await whisper.ready;
 // POST audio to `${whisper.url}/inference`
 ```
 
+`keepAlive` defaults to `-1`: models stay loaded until Ollama is stopped,
+which keeps the first token fast. Watch memory if you mix models. As of
+Ollama 0.40, a model on the **MLX runner** (`*-mlx` tags on Apple Silicon)
+is never evicted to make room: a request for another model that doesn't fit
+waits forever, and every later load queues behind it. If you pin an MLX
+model, keep the others small enough to fit beside it (an embedding model can
+run on CPU with `options: { num_gpu: 0 }`), or unload it yourself with
+`keep_alive: 0` before loading something large. Also put a timeout on every
+request, so a stuck load fails instead of hanging.
+
+### Restarting workers
+
+```ts
+import { spawn } from 'node:child_process';
+import { supervise } from '@kallamtech/electron-sidecars';
+
+const worker = supervise({
+  label: 'worker',
+  spawn: () => spawn(python, ['worker.py'], { stdio: 'inherit' }),
+  onSpawn: (child) => writePidFile(child.pid),
+});
+// on quit:
+await worker.stop();
+```
+
+An exit that `stop()` didn't ask for restarts the process after 1s, doubling
+up to 30s; a process that stays up 60s resets the backoff. `maxRestarts`
+caps consecutive restarts (default unlimited).
+
 ## Security
 
 Loopback is not a security boundary. Anything on the machine can connect to
@@ -150,6 +181,7 @@ Migrations are applied in-process as one multi-statement query per file, so
 | `ensureModel(url, model, onProgress?, label?)` | pulls an Ollama model if missing |
 | `startWhisper(opts)` | `{ url, ready, stop() }` |
 | `ensurePinnedModel(model, dir, onProgress?, label?)` | path to a verified download |
+| `supervise(opts)` | `{ child, stop(signal?) }`; restarts the child on unexpected exit |
 | `applySchema`, `ensureDatabase`, `schemaFingerprint` | the migration runner, standalone |
 | `stageBundle(src, dest, version)` | copy a read-only bundled dir somewhere writable, once per version |
 | `isPortOpen`, `waitForPort`, `findFreePort`, `findListenerPid`, `withoutEnv` | helpers |

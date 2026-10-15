@@ -1,6 +1,7 @@
 export { isPortOpen, waitForPort, findFreePort, findListenerPid, killPid, LOOPBACK } from './net.js';
 export { consoleLogger, type Logger } from './log.js';
 export { withoutEnv } from './env.js';
+export { supervise, type SuperviseOptions, type Supervised } from './supervise.js';
 export { stageBundle, type StageResult } from './stage-bundle.js';
 export {
   applySchema,
