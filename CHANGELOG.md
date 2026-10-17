@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.2
+
+- No runtime changes. Dev dependency update (electron 41) and the first release published from CI with npm provenance.
+
 ## 0.3.1
 
 - README: Ollama memory note corrected. A small CPU-only model doesn't make an MLX load safe; unload every other model before a cold GPU load and hold requests until it answers (ollama#17408).
