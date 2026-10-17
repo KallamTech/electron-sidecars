@@ -1,4 +1,4 @@
-# electron-sidecars
+# local-ai-stack
 
 Run a full **Postgres + pgvector / PostgREST / Redis / Ollama / whisper.cpp**
 stack inside an Electron app — no Docker, nothing for the user to install.
@@ -29,13 +29,13 @@ on-device mode. By Kallam.
 ## Install
 
 ```sh
-npm install @kallamtech/electron-sidecars
+npm install @kallamtech/local-ai-stack
 ```
 
 Not on npm yet — until the first release, install from git (builds on install):
 
 ```sh
-npm install github:KallamTech/electron-sidecars
+npm install github:KallamTech/local-ai-stack
 ```
 
 Node ≥ 20. Electron is an optional peer dependency — the main entry point
@@ -45,8 +45,8 @@ doesn't import it, so the sidecars also work from plain Node.
 
 ```ts
 import crypto from 'node:crypto';
-import { startPostgres, startPostgrest, startRedis } from '@kallamtech/electron-sidecars';
-import { dataPath, persistentSecret, resourcePath, stopOnQuit } from '@kallamtech/electron-sidecars/electron';
+import { startPostgres, startPostgrest, startRedis } from '@kallamtech/local-ai-stack';
+import { dataPath, persistentSecret, resourcePath, stopOnQuit } from '@kallamtech/local-ai-stack/electron';
 
 const res = (...p: string[]) => resourcePath(__dirname, ...p); // Resources/ when packaged
 const fresh = () => crypto.randomBytes(24).toString('hex');
@@ -94,7 +94,7 @@ prelude/migration layout.
 
 ```ts
 import { startOllama, ensureModel, startWhisper, ensurePinnedModel,
-  WHISPER_LARGE_V3_TURBO_Q5 } from '@kallamtech/electron-sidecars';
+  WHISPER_LARGE_V3_TURBO_Q5 } from '@kallamtech/local-ai-stack';
 
 const ollama = await startOllama({ bin: res('bin', 'ollama'), modelsDir: dataPath('ollama-models') });
 await ensureModel(ollama.url, 'nomic-embed-text', (phase, fraction) => ui.progress(phase, fraction));
@@ -130,7 +130,7 @@ model loaded beside it can trigger the eviction. Until it is fixed:
 
 ```ts
 import { spawn } from 'node:child_process';
-import { supervise } from '@kallamtech/electron-sidecars';
+import { supervise } from '@kallamtech/local-ai-stack';
 
 const worker = supervise({
   label: 'worker',
@@ -205,8 +205,8 @@ Every option is documented on its TypeScript type. All TCP listeners bind
 ## Bundling the binaries
 
 ```sh
-bash node_modules/@kallamtech/electron-sidecars/scripts/build-pg-bundle.sh pg
-bash node_modules/@kallamtech/electron-sidecars/scripts/build-bin.sh bin postgrest redis ollama whisper
+bash node_modules/@kallamtech/local-ai-stack/scripts/build-pg-bundle.sh pg
+bash node_modules/@kallamtech/local-ai-stack/scripts/build-bin.sh bin postgrest redis ollama whisper
 ```
 
 - `build-pg-bundle.sh` takes the relocatable Postgres 15 server binaries from
