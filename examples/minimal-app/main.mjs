@@ -5,8 +5,8 @@ import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { app, BrowserWindow } from 'electron';
-import { startPostgres, startPostgrest, startRedis } from '@kallamtech/electron-sidecars';
-import { dataPath, persistentSecret, resourcePath, stopOnQuit } from '@kallamtech/electron-sidecars/electron';
+import { startPostgres, startPostgrest, startRedis } from '@kallamtech/local-ai-stack';
+import { dataPath, persistentSecret, resourcePath, stopOnQuit } from '@kallamtech/local-ai-stack/electron';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const res = (...p) => resourcePath(here, ...p);

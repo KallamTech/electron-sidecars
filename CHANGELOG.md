@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.0
+
+Renamed from `electron-sidecars` to `@kallamtech/local-ai-stack`; first release on npm. No API changes. The `SIDECARS_*` environment variables are unchanged.
+
 ## 0.3.2
 
 - No runtime changes. Dev dependency update (electron 41) and the first release published from CI with npm provenance.

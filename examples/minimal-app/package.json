@@ -1,5 +1,5 @@
 {
-  "name": "electron-sidecars-minimal-app",
+  "name": "local-ai-stack-minimal-app",
   "private": true,
   "type": "module",
   "main": "main.mjs",
@@ -8,7 +8,7 @@
     "start": "electron ."
   },
   "dependencies": {
-    "@kallamtech/electron-sidecars": "file:../.."
+    "@kallamtech/local-ai-stack": "file:../.."
   },
   "devDependencies": {
     "electron": "^37.0.0"
