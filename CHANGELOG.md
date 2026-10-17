@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.1
+
+- README: Ollama memory note corrected. A small CPU-only model doesn't make an MLX load safe; unload every other model before a cold GPU load and hold requests until it answers (ollama#17408).
+
 ## 0.3.0
 
 - New `supervise()`: restarts a long-running child (worker, queue listener) with backoff when it exits unexpectedly; `stop()` ends it for good.
