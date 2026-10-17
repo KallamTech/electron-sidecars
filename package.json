@@ -1,6 +1,6 @@
 {
   "name": "@kallamtech/electron-sidecars",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Run Postgres+pgvector, PostgREST, Redis, Ollama and whisper.cpp as native sidecars inside an Electron (or Node) app — no Docker.",
   "license": "Apache-2.0",
   "author": "Kallam",

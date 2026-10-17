@@ -111,14 +111,20 @@ model doesn't fit beside the resident ones, Ollama's scheduler evicts to make
 room, and that path can deadlock: the load waits forever and every later
 cold load queues behind it
 ([ollama#17408](https://github.com/ollama/ollama/issues/17408); we hit it on
-0.40.3 with a pinned `*-mlx` model and a CPU-only embedding model). Until it
-is fixed:
+0.40.3 with a pinned `*-mlx` model and a CPU-only embedding model). Loading an
+MLX model checks it against the machine's free RAM, so even a small CPU-only
+model loaded beside it can trigger the eviction. Until it is fixed:
 
-- unload what you need gone yourself (`keep_alive: 0`) before loading a
-  model that won't fit, so the scheduler never has to evict;
-- keep small models where they can't collide (an embedding model can run on
-  CPU with `options: { num_gpu: 0 }`);
+- before a cold load of a GPU model, unload **every** other model
+  (`keep_alive: 0`) and wait until `/api/ps` no longer lists them, so the
+  scheduler never has to evict;
+- hold other requests (embeddings included) until the new model has answered,
+  so nothing races the load;
+- after that, a CPU-only model (`options: { num_gpu: 0 }`) can reload beside
+  it: a CPU-only load never evicts;
 - put a timeout on every request, so a stuck load fails instead of hanging.
+  With streamed responses, bound the silence (the read timeout) rather than
+  the whole generation.
 
 ### Restarting workers
 
